@@ -40,33 +40,41 @@ public struct MainView: View {
         .navigationTitle(state.selectedProfile.shortName)
         .navigationSubtitle(loc("subtitle"))
         .toolbar {
-            // 图层可见性切换
+            // 图层可见性切换（多选 Toggle，激活时有对应主题色）
             ToolbarItemGroup(placement: .automatic) {
                 Toggle(isOn: $state.showTargetCurve) {
                     Label(loc("chart_temperature"), systemImage: "waveform.path")
+                        .foregroundStyle(state.showTargetCurve ? Color.orange : Color.primary)
                 }
                 .help(loc("chart_temperature"))
+                .tint(.orange)
                 
                 Toggle(isOn: $state.showBeanTempCurve) {
                     Label(loc("chart_actual_temp"), systemImage: "thermometer.medium")
+                        .foregroundStyle(state.showBeanTempCurve ? Color.red : Color.primary)
                 }
                 .help(loc("chart_actual_temp"))
+                .tint(.red)
                 
                 Toggle(isOn: $state.showRoRCurve) {
                     Label(loc("chart_ror"), systemImage: "chart.line.uptrend.xyaxis")
+                        .foregroundStyle(state.showRoRCurve ? Color.blue : Color.primary)
                 }
                 .help(loc("chart_ror"))
+                .tint(.blue)
                 
                 Toggle(isOn: $state.showPhasesOverlay) {
                     Label(loc("phase_ratio"), systemImage: "square.3.layers.3d.down.right")
+                        .foregroundStyle(state.showPhasesOverlay ? Color.brown : Color.primary)
                 }
                 .help(loc("phase_ratio"))
+                .tint(.brown)
             }
             
-            // 属性检查器显示/隐藏开关
+            // 参数检查器开关（单独剥离到最右侧）
             ToolbarItem(placement: .primaryAction) {
                 Button(action: {
-                    withAnimation {
+                    withAnimation(.easeInOut(duration: 0.2)) {
                         state.isInspectorPresented.toggle()
                     }
                 }) {

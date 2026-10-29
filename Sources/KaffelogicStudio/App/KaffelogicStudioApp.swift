@@ -4,12 +4,21 @@ import AppKit
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         MenuLocalizer.localizeMainMenu()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            MenuLocalizer.localizeMainMenu()
+        // Run multiple times to catch menus built after launch
+        for delay in [0.05, 0.15, 0.3, 0.5, 1.0, 2.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                MenuLocalizer.localizeMainMenu()
+            }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            MenuLocalizer.localizeMainMenu()
-        }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        MenuLocalizer.localizeMainMenu()
+    }
+
+    func applicationWillUpdate(_ notification: Notification) {
+        // Re-localize on every update to catch dynamic menu changes
+        MenuLocalizer.localizeMainMenu()
     }
 }
 
@@ -74,8 +83,9 @@ struct KaffelogicStudioApp: App {
                 .keyboardShortcut(.delete, modifiers: .command)
             }
             
-            // MARK: - 【显示】菜单
-            CommandMenu("显示") {
+            // MARK: - 【视图】菜单 (折叠入工具栏控制，避免与系统 View 菜单重名)
+            CommandGroup(after: .toolbar) {
+                Divider()
                 Toggle("目标温度曲线", isOn: $appState.showTargetCurve)
                     .keyboardShortcut("1", modifiers: .command)
                 Toggle("实测豆温曲线", isOn: $appState.showBeanTempCurve)
@@ -84,9 +94,7 @@ struct KaffelogicStudioApp: App {
                     .keyboardShortcut("3", modifiers: .command)
                 Toggle("烘焙阶段色块划分", isOn: $appState.showPhasesOverlay)
                     .keyboardShortcut("4", modifiers: .command)
-                
                 Divider()
-                
                 Button(appState.isInspectorPresented ? "隐藏参数检查器" : "显示参数检查器") {
                     appState.isInspectorPresented.toggle()
                 }
@@ -216,21 +224,6 @@ struct KaffelogicStudioApp: App {
                 
                 Button(loc("compare_options")) {
                     appState.showCompareOptions = true
-                }
-                
-                Divider()
-                
-                Menu(loc("language_choice")) {
-                    ForEach(AppLanguage.allCases) { lang in
-                        Button(action: { l10n.language = lang }) {
-                            HStack {
-                                Text(lang.displayName)
-                                if l10n.language == lang {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
                 }
             }
             

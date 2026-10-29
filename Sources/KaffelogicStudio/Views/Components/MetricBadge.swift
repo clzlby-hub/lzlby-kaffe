@@ -6,7 +6,7 @@ public struct MetricBadge: View {
     public let unit: String
     public let icon: String
     public let tint: Color
-    
+
     public init(title: String, value: String, unit: String = "", icon: String, tint: Color) {
         self.title = title
         self.value = value
@@ -14,46 +14,50 @@ public struct MetricBadge: View {
         self.icon = icon
         self.tint = tint
     }
-    
+
     public var body: some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(tint)
-                .frame(width: 24, height: 24)
+                .frame(width: 28, height: 28)
                 .background(tint.opacity(0.16))
                 .clipShape(Circle())
-            
-            VStack(alignment: .leading, spacing: 2) {
+
+            VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                
-                HStack(alignment: .lastTextBaseline, spacing: 3) {
+                    .fixedSize()
+
+                HStack(alignment: .lastTextBaseline, spacing: 2) {
                     Text(value)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                        .monospacedDigit()
                         .foregroundColor(.primary)
                         .lineLimit(1)
-                    
+                        .fixedSize()
+
                     if !unit.isEmpty {
                         Text(unit)
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
+                            .fixedSize()
                     }
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(Material.thin)
-        .cornerRadius(8)
+        .cornerRadius(10)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
-        // 核心修复：强制卡片水平方向按内容包裹，绝不允许窗口缩小时将数字压断折行！
-        .fixedSize(horizontal: true, vertical: false)
+        // Both axes fixed so the card never squishes numbers
+        .fixedSize(horizontal: true, vertical: true)
     }
 }
