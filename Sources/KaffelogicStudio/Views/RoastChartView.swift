@@ -309,7 +309,63 @@ public struct RoastChartView: View {
                     padTop: padTop
                 )
             }
+            .gesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        let newScale = max(1.0, min(4.0, value.magnification))
+                        state.chartZoomScale = newScale
+                        if newScale <= 1.01 { state.chartTimeOffset = 0 }
+                    }
+            )
+            .focusable()
+            .onDeleteCommand {
+                deleteSelectedNode()
+            }
+            .contextMenu {
+                if state.chartEditMode != .view, let idx = state.selectedPointIndex {
+                    Button(role: .destructive) {
+                        deleteSelectedNode(at: idx)
+                    } label: {
+                        Label("删除选中节点 #\(idx + 1)", systemImage: "trash")
+                    }
+                    .disabled(editablePoints.count <= 2)
+                }
+                if state.chartZoomScale > 1.01 {
+                    Button {
+                        state.chartZoomScale = 1.0
+                        state.chartTimeOffset = 0
+                    } label: {
+                        Label("重置缩放", systemImage: "arrow.up.left.and.arrow.down.right")
+                    }
+                }
+                Menu("切换编辑模式") {
+                    ForEach(ChartEditMode.allCases) { mode in
+                        Button(mode.rawValue) {
+                            state.chartEditMode = mode
+                            state.selectedPointIndex = nil
+                        }
+                    }
+                }
+            }
         }
+    }
+    
+    private func deleteSelectedNode(at explicitIndex: Int? = nil) {
+        guard state.chartEditMode != .view else { return }
+        let idx = explicitIndex ?? state.selectedPointIndex
+        guard let idx else { return }
+        let isFan = state.chartEditMode == .editFanSpeed
+        let count = isFan ? state.selectedProfile.fanProfilePoints.count : state.selectedProfile.roastProfilePoints.count
+        guard count > 2, idx < count else { return }
+        state.pushUndoSnapshot()
+        state.updateSelectedProfile { p in
+            if isFan {
+                p.fanProfilePoints.remove(at: idx)
+            } else {
+                p.roastProfilePoints.remove(at: idx)
+            }
+        }
+        state.selectedPointIndex = nil
     }
     
     // MARK: - 交互编辑逻辑

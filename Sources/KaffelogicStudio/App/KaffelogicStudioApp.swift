@@ -42,12 +42,26 @@ struct KaffelogicStudioApp: App {
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
+            SidebarCommands()
+            
+            CommandGroup(replacing: .undoRedo) {
+                Button("撤销曲线修改") {
+                    appState.undo()
+                }
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(!appState.canUndo)
+                
+                Button("重做曲线修改") {
+                    appState.redo()
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .disabled(!appState.canRedo)
+            }
+            
             // MARK: - 【文件】菜单
             CommandGroup(replacing: .newItem) {
                 Button("新建烘焙方案") {
-                    let newP = RoastProfile(shortName: "未命名烘焙方案")
-                    appState.profiles.append(newP)
-                    appState.selectProfile(newP)
+                    appState.createNewProfile()
                 }
                 .keyboardShortcut("n", modifiers: .command)
                 
@@ -119,7 +133,7 @@ struct KaffelogicStudioApp: App {
                         appState.compareWithFile(url: url)
                     }
                 }
-                .keyboardShortcut("f", modifiers: .command)
+                .keyboardShortcut("f", modifiers: [.command, .option])
                 
                 Button(loc("clear_compare")) {
                     appState.clearComparison()
@@ -167,7 +181,20 @@ struct KaffelogicStudioApp: App {
                     let savePanel = NSSavePanel()
                     savePanel.allowedContentTypes = [.png]
                     savePanel.nameFieldStringValue = "烘焙图表_\(appState.selectedProfile.shortName).png"
-                    if savePanel.runModal() == .OK, let _ = savePanel.url {}
+                    if savePanel.runModal() == .OK, let url = savePanel.url {
+                        let view = RoastChartView(state: appState)
+                            .frame(width: 1200, height: 700)
+                            .padding(16)
+                            .background(Color(nsColor: .windowBackgroundColor))
+                        let renderer = ImageRenderer(content: view)
+                        renderer.scale = 2.0
+                        if let nsImage = renderer.nsImage,
+                           let tiff = nsImage.tiffRepresentation,
+                           let rep = NSBitmapImageRep(data: tiff),
+                           let png = rep.representation(using: .png, properties: [:]) {
+                            try? png.write(to: url)
+                        }
+                    }
                 }
                 
                 Divider()
@@ -251,6 +278,10 @@ struct KaffelogicStudioApp: App {
                     NSApp.orderFrontStandardAboutPanel(nil)
                 }
             }
+        }
+        
+        Settings {
+            GeneralOptionsView(state: appState)
         }
     }
 }

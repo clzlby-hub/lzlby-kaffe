@@ -1,11 +1,17 @@
 import SwiftUI
 
+private enum SidebarSelection: Hashable {
+    case profile(UUID)
+    case log(UUID)
+}
+
 public struct SidebarView: View {
     @ObservedObject var state: AppState
     @ObservedObject var l10n = L10n.shared
     @ObservedObject var device = DeviceManager.shared
     
     @State private var searchText = ""
+    @State private var selection: SidebarSelection? = nil
     @State private var isImporting = false
     @State private var showingRenameAlert = false
     @State private var renameTargetType: String = ""
@@ -31,247 +37,208 @@ public struct SidebarView: View {
     }
     
     public var body: some View {
-        VStack(spacing: 0) {
-            // 顶部搜索与设备状态条
-            VStack(spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                        .font(.system(size: 11))
-                    TextField("搜索方案或烘焙记录...", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12))
-                    if !searchText.isEmpty {
-                        Button(action: { searchText = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                                .font(.system(size: 11))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(Color.primary.opacity(0.06))
-                .cornerRadius(6)
-                
-                HStack(spacing: 6) {
+        List(selection: $selection) {
+            Section {
+                HStack(spacing: 8) {
                     Circle()
-                        .fill(device.state.isConnected ? Color.green : Color.gray.opacity(0.55))
-                        .frame(width: 7, height: 7)
+                        .fill(device.state.isConnected ? Color.green : Color.secondary.opacity(0.45))
+                        .frame(width: 8, height: 8)
                     Text(device.state.description)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer()
                     Button(action: { device.scanManually() }) {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                            .font(.caption)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderless)
                     .help("重新扫描 USB 设备")
                     
                     Button(action: { state.openSyncFolder() }) {
                         Image(systemName: "folder")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                            .font(.caption)
                     }
-                    .buttonStyle(.plain)
-                    .help("打开本地同步目录 (~/Documents/kaffelogic)")
+                    .buttonStyle(.borderless)
+                    .help("在 Finder 中打开同步目录")
                 }
-                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+            } header: {
+                Text("设备")
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
             
-            Divider()
+            Section("烘焙方案 (\(filteredProfiles.count))") {
+                ForEach(filteredProfiles) { profile in
+                    HStack(spacing: 8) {
+                        Image(systemName: "chart.xyaxis.line")
+                            .foregroundStyle(state.selectedProfile.id == profile.id ? Color.orange : Color.secondary)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(profile.shortName)
+                                .font(.body)
+                                .lineLimit(1)
+                            
+                            Text("Lv \(String(format: "%.1f", profile.recommendedLevel)) · \(Int(profile.referenceLoadSize))g")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .tag(SidebarSelection.profile(profile.id))
+                    .contextMenu {
+                        Button {
+                            targetProfileToRename = profile
+                            renameText = profile.shortName
+                            renameTargetType = "profile"
+                            showingRenameAlert = true
+                        } label: {
+                            Label("重命名方案...", systemImage: "pencil")
+                        }
+                        
+                        Button {
+                            state.comparisonProfile = profile
+                            state.isComparingDefault = false
+                        } label: {
+                            Label("设为对比图层", systemImage: "square.2.layers.3d")
+                        }
+                        
+                        Divider()
+                        
+                        Button(role: .destructive) {
+                            withAnimation { state.deleteProfile(profile) }
+                        } label: {
+                            Label("删除方案", systemImage: "trash")
+                        }
+                    }
+                }
+            }
             
-            List {
-                Section("烘焙方案 (\(filteredProfiles.count))") {
-                    ForEach(filteredProfiles) { profile in
+            Section("历史烘焙记录 (\(filteredLogs.count))") {
+                if filteredLogs.isEmpty {
+                    Text("暂无历史记录")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(filteredLogs) { log in
                         HStack(spacing: 8) {
-                            Image(systemName: "chart.xyaxis.line")
-                                .foregroundColor(state.selectedProfile.id == profile.id ? .orange : .secondary)
-                                .font(.system(size: 13))
+                            Image(systemName: "doc.text.fill")
+                                .foregroundStyle(state.selectedLog?.id == log.id ? Color.red : Color.secondary)
                             
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(profile.shortName)
-                                    .font(.system(size: 12.5, weight: .semibold))
+                                Text(log.title)
+                                    .font(.body)
                                     .lineLimit(1)
                                 
-                                HStack(spacing: 6) {
-                                    Text("Lv \(String(format: "%.1f", profile.recommendedLevel))")
-                                    Text("·")
-                                    Text("\(Int(profile.referenceLoadSize))g")
+                                HStack(spacing: 5) {
+                                    Text(log.profileUsed)
+                                    if let loss = log.weightLossPercent {
+                                        Text("· 失水 \(String(format: "%.1f%%", loss))")
+                                    }
+                                    if let score = log.cuppingScore, score > 0 {
+                                        Text("· ★\(String(format: "%.0f", score))")
+                                            .foregroundStyle(.orange)
+                                    }
                                 }
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                             }
-                            Spacer()
                         }
-                        .padding(.vertical, 3)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            state.selectProfile(profile)
-                            state.inspectorTab = .profile
-                        }
-                        .listRowBackground(state.selectedProfile.id == profile.id ? Color.accentColor.opacity(0.18) : Color.clear)
+                        .tag(SidebarSelection.log(log.id))
                         .contextMenu {
-                            Button(action: {
-                                targetProfileToRename = profile
-                                renameText = profile.shortName
-                                renameTargetType = "profile"
+                            Button {
+                                targetLogToRename = log
+                                renameText = log.title
+                                renameTargetType = "log"
                                 showingRenameAlert = true
-                            }) {
-                                Label("重命名方案...", systemImage: "pencil")
+                            } label: {
+                                Label("重命名记录...", systemImage: "pencil")
                             }
                             
-                            Button(action: {
-                                state.comparisonProfile = profile
-                                state.isComparingDefault = false
-                            }) {
-                                Label("设为对比图层", systemImage: "square.2.layers.3d")
+                            Button {
+                                state.comparisonLog = log
+                            } label: {
+                                Label("作为对比曲线叠加", systemImage: "square.2.layers.3d")
+                            }
+                            
+                            Button {
+                                extractProfile(from: log)
+                            } label: {
+                                Label("提取实测为新方案 (Make Profile)", systemImage: "wand.and.stars")
                             }
                             
                             Divider()
                             
-                            Button(role: .destructive, action: {
-                                withAnimation { state.deleteProfile(profile) }
-                            }) {
-                                Label("删除方案", systemImage: "trash")
-                            }
-                        }
-                    }
-                }
-                
-                Section("历史烘焙记录 (\(filteredLogs.count))") {
-                    if filteredLogs.isEmpty {
-                        Text("暂无历史记录")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                            .padding(.vertical, 4)
-                    } else {
-                        ForEach(filteredLogs) { log in
-                            HStack(spacing: 8) {
-                                Image(systemName: "doc.text.fill")
-                                    .foregroundColor(state.selectedLog?.id == log.id ? .red : .secondary)
-                                    .font(.system(size: 13))
-                                
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(log.title)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .lineLimit(1)
-                                    
-                                    HStack(spacing: 5) {
-                                        Text(log.profileUsed)
-                                        if let loss = log.weightLossPercent {
-                                            Text("· 失水 \(String(format: "%.1f%%", loss))")
-                                        }
-                                        if let score = log.cuppingScore, score > 0 {
-                                            Text("· ★\(String(format: "%.0f", score))")
-                                                .foregroundColor(.orange)
-                                        }
-                                    }
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                }
-                                Spacer()
-                            }
-                            .padding(.vertical, 3)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                state.selectLog(log)
-                                state.inspectorTab = .log
-                            }
-                            .listRowBackground(state.selectedLog?.id == log.id ? Color.red.opacity(0.15) : Color.clear)
-                            .contextMenu {
-                                Button(action: {
-                                    targetLogToRename = log
-                                    renameText = log.title
-                                    renameTargetType = "log"
-                                    showingRenameAlert = true
-                                }) {
-                                    Label("重命名记录...", systemImage: "pencil")
-                                }
-                                
-                                Button(action: { state.comparisonLog = log }) {
-                                    Label("作为对比曲线叠加", systemImage: "square.2.layers.3d")
-                                }
-                                
-                                Button(action: { extractProfile(from: log) }) {
-                                    Label("提取实测为新方案 (Make Profile)", systemImage: "wand.and.stars")
-                                }
-                                
-                                Divider()
-                                
-                                Button(role: .destructive, action: {
-                                    withAnimation { state.deleteLog(log) }
-                                }) {
-                                    Label("删除此记录", systemImage: "trash")
-                                }
+                            Button(role: .destructive) {
+                                withAnimation { state.deleteLog(log) }
+                            } label: {
+                                Label("删除此记录", systemImage: "trash")
                             }
                         }
                     }
                 }
             }
-            .listStyle(.sidebar)
-            .onDeleteCommand {
-                if let log = state.selectedLog {
-                    withAnimation { state.deleteLog(log) }
+        }
+        .listStyle(.sidebar)
+        .searchable(text: $searchText, placement: .sidebar, prompt: "搜索方案或烘焙记录")
+        .onChange(of: selection) { _, newSel in
+            switch newSel {
+            case .profile(let id):
+                if let p = state.profiles.first(where: { $0.id == id }) {
+                    state.selectProfile(p)
+                    state.inspectorTab = .profile
                 }
+            case .log(let id):
+                if let l = state.logs.first(where: { $0.id == id }) {
+                    state.selectLog(l)
+                    state.inspectorTab = .log
+                }
+            case .none:
+                break
             }
-            
-            Divider()
-            
-            HStack(spacing: 4) {
+        }
+        .onAppear {
+            selection = .profile(state.selectedProfile.id)
+        }
+        .onDeleteCommand {
+            switch selection {
+            case .log(let id):
+                if let l = state.logs.first(where: { $0.id == id }) {
+                    withAnimation { state.deleteLog(l) }
+                }
+            case .profile(let id):
+                if state.profiles.count > 1, let p = state.profiles.first(where: { $0.id == id }) {
+                    withAnimation { state.deleteProfile(p) }
+                }
+            case .none:
+                break
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            HStack(spacing: 8) {
                 Button(action: { state.createNewProfile() }) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(width: 28, height: 26)
-                        .contentShape(Rectangle())
+                    Label("新建", systemImage: "plus")
+                        .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.plain)
-                .help("新建烘焙方案")
+                .buttonStyle(.borderless)
+                .help("新建烘焙方案 (⌘N)")
                 
                 Button(action: { isImporting = true }) {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(width: 28, height: 26)
-                        .contentShape(Rectangle())
+                    Label("导入", systemImage: "square.and.arrow.down")
+                        .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.plain)
-                .help("打开 / 导入烘焙文件 (.kpro, .klog)")
-                
-                Button(action: {
-                    if let log = state.selectedLog {
-                        withAnimation { state.deleteLog(log) }
-                    } else {
-                        withAnimation { state.deleteProfile(state.selectedProfile) }
-                    }
-                }) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(width: 28, height: 26)
-                        .foregroundColor(.secondary)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("删除选中的记录或方案")
-                .disabled(state.selectedLog == nil && state.profiles.count <= 1)
+                .buttonStyle(.borderless)
+                .help("导入烘焙文件 (.kpro, .klog)")
                 
                 Spacer()
                 
                 Text("\(state.profiles.count)方案 · \(state.logs.count)记录")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                    .padding(.trailing, 8)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(Material.bar)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.bar)
+            .overlay(Divider(), alignment: .top)
         }
         .fileImporter(
             isPresented: $isImporting,
