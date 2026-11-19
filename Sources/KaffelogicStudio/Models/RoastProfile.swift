@@ -18,6 +18,7 @@ public struct RoastProfile: Identifiable, Equatable {
     public var roastProfilePoints: [ProfilePoint]
     public var fanProfilePoints: [ProfilePoint]
     public var rawProperties: [String: String] = [:]
+    public var fileName: String?
     
     public init(
         shortName: String = "My Roast Profile",

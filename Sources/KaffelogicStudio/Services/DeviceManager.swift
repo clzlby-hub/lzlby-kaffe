@@ -33,6 +33,11 @@ public class DeviceManager: ObservableObject {
     @Published public var currentFanRPM: Double = 0.0
     @Published public var elapsedTime: Double = 0.0
     @Published public var isRoasting: Bool = false
+    @Published public var firstCrackTime: Double? = nil
+    @Published public var firstCrackTemp: Double? = nil
+    @Published public var recordedSamples: [LogSamplePoint] = []
+    
+    public var onRoastFinished: ((RoastLog) -> Void)?
     
     private var simulationTimer: Timer?
     private var usbMonitorTimer: Timer?
@@ -84,12 +89,24 @@ public class DeviceManager: ObservableObject {
     
     // MARK: - 烘焙模拟演示
     public func startSimulation(with profile: RoastProfile) {
-        stop()
+        stop(saveLog: false)
         self.activeProfile = profile
         self.state = .simulated
         self.isRoasting = true
         self.elapsedTime = 0.0
         self.currentBeanTemp = 24.0
+        self.firstCrackTime = nil
+        self.firstCrackTemp = nil
+        self.recordedSamples = [
+            LogSamplePoint(
+                time: 0.0,
+                beanTemp: 24.0,
+                targetTemp: BezierMath.valueAt(time: 0.0, points: profile.roastProfilePoints) ?? 24.0,
+                actualRoR: 0.0,
+                heaterPower: profile.preheatPower / 1000.0,
+                fanSpeed: BezierMath.valueAt(time: 0.0, points: profile.fanProfilePoints) ?? 14000
+            )
+        ]
         
         simulationTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             guard let self = self, let profile = self.activeProfile else { return }
@@ -101,18 +118,58 @@ public class DeviceManager: ObservableObject {
             self.currentRoR = max(0, (step / 0.5) * 60.0)
             self.currentFanRPM = BezierMath.valueAt(time: self.elapsedTime, points: profile.fanProfilePoints) ?? 14000
             self.currentPower = max(0.2, min(1.35, (profile.roastRequiredPower / 1000.0) * (diff > 5 ? 1.0 : 0.6)))
+            self.recordedSamples.append(
+                LogSamplePoint(
+                    time: self.elapsedTime,
+                    beanTemp: self.currentBeanTemp,
+                    targetTemp: target,
+                    actualRoR: self.currentRoR,
+                    heaterPower: self.currentPower,
+                    fanSpeed: self.currentFanRPM
+                )
+            )
             if let maxT = profile.roastProfilePoints.last?.x, self.elapsedTime >= maxT {
-                self.stop()
+                self.stop(saveLog: true)
             }
         }
     }
     
-    public func stop() {
+    public func markFirstCrack() {
+        guard isRoasting else { return }
+        firstCrackTime = elapsedTime
+        firstCrackTemp = currentBeanTemp
+    }
+    
+    public func stop(saveLog: Bool = true) {
+        let wasRoasting = isRoasting
+        let samples = recordedSamples
+        let profile = activeProfile
+        let fcTime = firstCrackTime
+        let fcTemp = firstCrackTemp
+        let dropT = elapsedTime
+        let dropBeanT = currentBeanTemp
+        
         simulationTimer?.invalidate()
         simulationTimer = nil
         isRoasting = false
         if case .simulated = state {
             state = .disconnected
+        }
+        
+        if saveLog, wasRoasting, samples.count >= 2, let profile {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm"
+            var log = RoastLog(
+                title: "\(profile.shortName) · \(formatter.string(from: Date()))",
+                date: Date(),
+                profileUsed: profile.shortName,
+                samples: samples
+            )
+            log.firstCrackTime = fcTime
+            log.firstCrackTemp = fcTemp
+            log.dropTime = dropT
+            log.dropTemp = dropBeanT
+            onRoastFinished?(log)
         }
     }
 }

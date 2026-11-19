@@ -1,0 +1,63 @@
+name: Build Kaffelogic Studio macOS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos-release:
+    runs-on: xcode-27
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Release Binary (SwiftPM)
+        run: |
+          swift build -c release --arch arm64
+
+      - name: Package & Ad-hoc Sign Kaffelogic Studio.app
+        run: |
+          APP_NAME="Kaffelogic Studio.app"
+          APP_DIR="build/$APP_NAME"
+          CONTENTS_DIR="$APP_DIR/Contents"
+          MACOS_DIR="$CONTENTS_DIR/MacOS"
+          RESOURCES_DIR="$CONTENTS_DIR/Resources"
+
+          rm -rf build
+          mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
+
+          BIN_PATH=$(swift build -c release --arch arm64 --show-bin-path)
+          cp "$BIN_PATH/KaffelogicStudioNative" "$MACOS_DIR/KaffelogicStudioNative"
+          chmod +x "$MACOS_DIR/KaffelogicStudioNative"
+
+          cp Resources/Info.plist "$CONTENTS_DIR/Info.plist"
+          if [ -f Resources/AppIcon.icns ]; then
+            cp Resources/AppIcon.icns "$RESOURCES_DIR/AppIcon.icns"
+          fi
+          if [ -d Resources/zh-Hans.lproj ]; then
+            cp -R Resources/zh-Hans.lproj "$RESOURCES_DIR/"
+          fi
+
+          codesign --force --deep --sign - "$APP_DIR"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "build/Kaffelogic-Studio-macOS.zip"
+          ls -lh "build/Kaffelogic-Studio-macOS.zip"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kaffelogic-Studio-macOS
+          path: build/Kaffelogic-Studio-macOS.zip
+          if-no-files-found: error
+
+      - name: Publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v8.0.0-native build/Kaffelogic-Studio-macOS.zip \
+            --title "Kaffelogic Studio Native macOS" \
+            --notes "Native macOS Kaffelogic Studio build" \
+          || gh release upload v8.0.0-native build/Kaffelogic-Studio-macOS.zip --clobber

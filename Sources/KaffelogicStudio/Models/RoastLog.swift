@@ -46,6 +46,17 @@ public struct RoastLog: Identifiable, Equatable {
     public var firstCrackTemp: Double?
     public var dropTime: Double?
     public var dropTemp: Double?
+    public var beanOrigin: String = ""
+    public var greenWeight: Double?
+    public var roastedWeight: Double?
+    public var cuppingScore: Double?
+    public var tastingNotes: String = ""
+    public var fileName: String?
+
+    public var weightLossPercent: Double? {
+        guard let g = greenWeight, let r = roastedWeight, g > 0, r >= 0, r <= g else { return nil }
+        return ((g - r) / g) * 100.0
+    }
     
     public init(
         title: String,
